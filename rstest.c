@@ -12,9 +12,9 @@
 #include "include/reed_solomon.h"
 
 int exercise_int(void);
+int correction_count;
 
-word_t error_offsets[RS_MAX_ERRORS];
-word_t error_values[RS_MAX_ERRORS];
+error_marker_t corrections[RS_MAX_ERROR_MARKERS];
 
 int main()
 {
@@ -58,7 +58,7 @@ int main()
 		}
 
 		/* Decode the errored block */
-		derrors = decode_rs(tblock, error_offsets, error_values);
+		derrors = decode_rs(tblock, &correction_count, corrections);
 
 		printf("\n\n(%d,%d) decoder says %d errors, actual number is %d\n", TOTAL_SYMBOL_COUNT, DATA_SYMBOL_COUNT, derrors, errors);
 

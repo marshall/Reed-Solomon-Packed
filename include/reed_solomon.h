@@ -46,7 +46,16 @@ inline static void INLINE_ATTRIBUTE encode_rs(symbol_t data[SYMBOL_TABLE_WORDS])
 #include <encode_rs.h>
 }
 
-inline static int INLINE_ATTRIBUTE decode_rs(symbol_t data[SYMBOL_TABLE_WORDS], word_t error_offsets[RS_MAX_ERRORS], word_t corrected_values[RS_MAX_ERRORS]) {
+typedef struct error_marker {
+	uint32_t* pointer;
+	uint32_t  corrected_dword;
+} error_marker_t;
+
+#define RS_MAX_ERROR_MARKERS (RS_MAX_ERRORS * 2)
+
+inline static int INLINE_ATTRIBUTE decode_rs(symbol_t data[SYMBOL_TABLE_WORDS],
+											 int* correction_count,
+											 error_marker_t corrections[RS_MAX_ERROR_MARKERS]) {
 #include <decode_rs.h>
 }
 

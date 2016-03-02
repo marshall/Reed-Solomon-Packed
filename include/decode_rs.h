@@ -17,8 +17,7 @@
 
 	symbol_t root[PARITY_SYMBOL_COUNT], loc[PARITY_SYMBOL_COUNT];
 
-	int		 corrections;
-	word_t 	 offset, word1, word2;
+	uint32_t bit_count, woffs, bit_shift, sym, tmp32;
 
 	/* form the syndromes; i.e., evaluate data(x) at roots of g(x) */
 	d0 = symbol_get(data, 0);
@@ -179,7 +178,7 @@
 	 * inv(X(l))**(FCR-1) and den = lambda_pr(inv(X(l))) all in poly-form
 	 */
 
-	 corrections = 0;
+	 *correction_count = 0;
 	for (j = error_count - 1; j >= 0; j--) {
 		num1 = 0;
 		for (i = deg_omega; i >= 0; i--) {
@@ -203,27 +202,29 @@
 				return -8;
 			}
 
-			/* Convert this to word offsets not symbol offsets */
-			offset = loc[j] * BITS_PER_SYMBOL / BITS_PER_WORD;
-			word1 = data[offset];
-			word2 = data[offset+1];
-			symbol_put(data, loc[j], symbol_get(data, loc[j]) ^ symbol_get(alpha_to, modnn(symbol_get(index_of, num1) +
-																						   symbol_get(index_of, num2) +
-																						   TOTAL_SYMBOL_COUNT -
-																						   symbol_get(index_of, den))));
+			/* Convert this to uint32_t pointers to uint32_t corrected_values */
+			bit_count = (uint32_t)loc[j] * BITS_PER_SYMBOL;
+			bit_shift = bit_count & 0x0000000F;
+			woffs = bit_count / BITS_PER_WORD;
+			sym = (uint32_t)(symbol_get(data, loc[j]) ^ symbol_get(alpha_to, modnn(symbol_get(index_of, num1) +
+																				   symbol_get(index_of, num2) +
+																				   TOTAL_SYMBOL_COUNT -
+																				   symbol_get(index_of, den))));
+			sym <<= bit_shift;
+			tmp32 = ((uint32_t)data[woffs + 1] << BITS_PER_WORD) | ((uint32_t)data[woffs]);
+			tmp32 = (tmp32 & (~SYMBOL_MASK << bit_shift)) | sym;
 
-			if (word1 != data[offset]) {
-				error_offsets[corrections] = offset;
-				corrected_values[corrections++] = data[offset];
+			if (bit_count & 0x00000010) { /* Same as (bit_count / BITS_PER_WORD) & 0x00000001 */
+				corrections[*correction_count].pointer = (uint32_t*)&data[woffs - 1];
+				corrections[*correction_count++].corrected_dword = ((uint32_t)data[woffs - 1]) | (tmp32 << BITS_PER_WORD);
+				corrections[*correction_count].pointer = (uint32_t*)&data[woffs + 1];
+				corrections[*correction_count++].corrected_dword = ((uint32_t)data[woffs + 1] << BITS_PER_WORD) | (tmp32 >> BITS_PER_WORD);
 			}
-
-			if (word2 != data[offset]) {
-				error_offsets[corrections] = offset;
-				corrected_values[corrections++] = data[offset];
+			else { /* Already aligned to 32 bit boundaries */
+				corrections[*correction_count].pointer = (uint32_t*)&data[woffs];
+				corrections[*correction_count++].corrected_dword = tmp32;
 			}
 		}
 	}
-
-	error_offsets[corrections] = -1;
 
 	return error_count;
