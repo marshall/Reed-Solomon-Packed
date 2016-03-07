@@ -1,7 +1,7 @@
 	int el, i, j, r, k;
 	symbol_t q, tmp, num1, num2, den, discr_r;
 
-	symbol_t d0, idx_zero;
+	symbol_t d0;
 
 	int		 syn_error;
 	symbol_t syndromes[PARITY_SYMBOL_COUNT];
@@ -17,7 +17,9 @@
 
 	symbol_t root[PARITY_SYMBOL_COUNT], loc[PARITY_SYMBOL_COUNT];
 
-	uint32_t bit_count, woffs, bit_shift, sym, tmp32;
+	uint32_t data_bits_offset, woffs, bit_shift, alignment_needed, symbol_correction;
+	uint32_t* tmp32_ptr;
+	error_marker_t* em_ptr;
 
 	/* form the syndromes; i.e., evaluate data(x) at roots of g(x) */
 	d0 = symbol_get(data, 0);
@@ -51,12 +53,11 @@
 	}
 
 	/* Initialize lambda[] and b[] */
+	memset(&lambda[1], 0, PARITY_SYMBOL_COUNT * sizeof(lambda[0]));
 	lambda[0] = 1;
-	b[0] = symbol_get(index_of, 1);
-	idx_zero = symbol_get(index_of, 0);
-	for (i = 1; i <= PARITY_SYMBOL_COUNT; i++) {
-		lambda[i] = 0;
-		b[i] = idx_zero;
+
+	for (i = 0; i < PARITY_SYMBOL_COUNT + 1; i++) {
+		b[i] = symbol_get(index_of, lambda[i]);
 	}
 
 	/*
@@ -78,9 +79,7 @@
 		discr_r = symbol_get(index_of, discr_r); /* Index form */
 		if (discr_r == A0) {
 			/* B(x) <-- x*B(x) */
-			for(j = PARITY_SYMBOL_COUNT; j > 0; j--) {
-				b[j] = b[j-1];
-			}
+		    memmove(&b[1], b, PARITY_SYMBOL_COUNT * sizeof(b[0]));
 			b[0] = A0;
 		}
 		else {
@@ -106,15 +105,10 @@
 			}
 			else {
 				/* B(x) <-- x*B(x) */
-				for(j = PARITY_SYMBOL_COUNT; j > 0; j--) {
-					b[j] = b[j-1];
-				}
+				memmove(&b[1], b, PARITY_SYMBOL_COUNT * sizeof(b[0]));
 				b[0] = A0;
 			}
-
-			for(j=0; j<(PARITY_SYMBOL_COUNT + 1); j++) {
-				lambda[j] = t[j];
-			}
+      		memcpy(lambda,t,(PARITY_SYMBOL_COUNT + 1) * sizeof(t[0]));
 		}
 	}
 
@@ -128,9 +122,7 @@
 	}
 
 	/* Find roots of the error locator polynomial by Chien search */
-	for (i = 1; i <= PARITY_SYMBOL_COUNT; i++) {
-		reg[i] = lambda[i];
-	}
+	memcpy(&reg[1], &lambda[1], PARITY_SYMBOL_COUNT * sizeof(reg[0]));
 
 	error_count = 0;  /* Number of roots of lambda(x) */
 	k = IPRIM - 1;
@@ -155,7 +147,7 @@
 
 	if (deg_lambda != error_count) {
 		/* deg(lambda) unequal to number of roots => uncorrectable error detected */
-		return -5;
+		return -55;
 	}
 
 	/*
@@ -178,7 +170,7 @@
 	 * inv(X(l))**(FCR-1) and den = lambda_pr(inv(X(l))) all in poly-form
 	 */
 
-	 *correction_count = 0;
+	*correction_count = 0;
 	for (j = error_count - 1; j >= 0; j--) {
 		num1 = 0;
 		for (i = deg_omega; i >= 0; i--) {
@@ -198,31 +190,40 @@
 
 		/* Apply error to data */
 		if ((num1 != 0)) {
-			if (error_count >= RS_MAX_SYMBOL_ERRORS) {
-				return -8;
+			if (error_count > RS_MAX_SYMBOL_ERRORS) {
+				return -88;
 			}
 
 			/* Convert this to uint32_t pointers to uint32_t corrected_values */
-			bit_count = (uint32_t)loc[j] * BITS_PER_SYMBOL;
-			bit_shift = bit_count & 0x0000000F;
-			woffs = bit_count / BITS_PER_WORD;
-			sym = (uint32_t)(symbol_get(data, loc[j]) ^ symbol_get(alpha_to, modnn(symbol_get(index_of, num1) +
-																				   symbol_get(index_of, num2) +
-																				   TOTAL_SYMBOL_COUNT -
-																				   symbol_get(index_of, den))));
-			sym <<= bit_shift;
-			tmp32 = ((uint32_t)data[woffs + 1] << BITS_PER_WORD) | ((uint32_t)data[woffs]);
-			tmp32 = (tmp32 & (~SYMBOL_MASK << bit_shift)) | sym;
 
-			if (bit_count & 0x00000010) { /* Same as (bit_count / BITS_PER_WORD) & 0x00000001 */
-				corrections[*correction_count].pointer = (uint32_t*)&data[woffs - 1];
-				corrections[*correction_count++].corrected_dword = ((uint32_t)data[woffs - 1]) | (tmp32 << BITS_PER_WORD);
-				corrections[*correction_count].pointer = (uint32_t*)&data[woffs + 1];
-				corrections[*correction_count++].corrected_dword = ((uint32_t)data[woffs + 1] << BITS_PER_WORD) | (tmp32 >> BITS_PER_WORD);
+			data_bits_offset = (uint32_t)loc[j] * BITS_PER_SYMBOL;
+			/* woffs is the index (data[index]) of the first word containing part of this symbol */
+			woffs = data_bits_offset / BITS_PER_WORD;
+			/* bit_shift is the number of bits that the symbol is offset into the first data word */
+			bit_shift = data_bits_offset & 0x0000000F;
+
+			/* symbol_correction XOR'd with the corrupt symbol produces corrected data. */
+			symbol_correction = (uint32_t)symbol_get(alpha_to, modnn(symbol_get(index_of, num1) +
+																	 symbol_get(index_of, num2) +
+																	 TOTAL_SYMBOL_COUNT -
+																	 symbol_get(index_of, den)));
+			symbol_correction <<= bit_shift;
+			tmp32_ptr = (uint32_t*)&data[woffs];
+
+			if (((uint32_t)tmp32_ptr & 3u) != 0){
+				alignment_needed = 1;
+				tmp32_ptr = (uint32_t*)((uint32_t)tmp32_ptr & ~3u);
 			}
-			else { /* Already aligned to 32 bit boundaries */
-				corrections[*correction_count].pointer = (uint32_t*)&data[woffs];
-				corrections[*correction_count++].corrected_dword = tmp32;
+
+			em_ptr = get_marker(tmp32_ptr, data, correction_count, corrections);
+
+			if (alignment_needed != 0) {
+				em_ptr->corrected_dword ^= (symbol_correction << BITS_PER_WORD);
+				em_ptr = get_marker(++tmp32_ptr, data, correction_count, corrections);
+				em_ptr->corrected_dword ^= (symbol_correction >> BITS_PER_WORD);
+			}
+			else {
+				em_ptr->corrected_dword ^= symbol_correction;
 			}
 		}
 	}

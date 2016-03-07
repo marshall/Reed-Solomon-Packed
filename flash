@@ -1,0 +1,2 @@
+#!/bin/bash
+openocd -f openocd.cfg -f my_stm32f4.cfg -c "myFlash rs_test.elf"

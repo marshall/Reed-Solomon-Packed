@@ -6,7 +6,7 @@
 #ifndef _REED_SOLOMON_H
 #define _REED_SOLOMON_H
 
-#include <rs_types.h>
+#include "rs_types.h"
 
 extern const word_t alpha_to[SYMBOL_TABLE_WORDS];
 extern const word_t index_of[SYMBOL_TABLE_WORDS];
@@ -51,11 +51,30 @@ typedef struct error_marker {
 	uint32_t  corrected_dword;
 } error_marker_t;
 
-#define RS_MAX_ERROR_MARKERS (RS_MAX_ERRORS * 2)
+#define RS_MAX_CORRECTIONS (RS_MAX_ERRORS * 2)
+
+inline static error_marker_t* INLINE_ATTRIBUTE get_marker(uint32_t* ptr,
+														  word_t data[],
+														  int* mcount,
+														  error_marker_t markers[RS_MAX_CORRECTIONS]) {
+	int i;
+
+	for(i=0; i<*mcount; i++) {
+		if (markers[i].pointer == ptr) {
+			return &markers[i];
+		}
+	}
+
+	markers[*mcount].pointer = ptr;
+	markers[*mcount].corrected_dword = *ptr;
+	i = (*mcount)++;
+	return &markers[i];
+}
+
 
 inline static int INLINE_ATTRIBUTE decode_rs(symbol_t data[SYMBOL_TABLE_WORDS],
 											 int* correction_count,
-											 error_marker_t corrections[RS_MAX_ERROR_MARKERS]) {
+											 error_marker_t corrections[RS_MAX_CORRECTIONS]) {
 #include <decode_rs.h>
 }
 
