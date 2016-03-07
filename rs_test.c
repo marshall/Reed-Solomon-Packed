@@ -71,16 +71,17 @@ void reed_solomon_test() {
 		printf("decode_rs()\n");
 		derrors = decode_rs(tblock, &correction_count, corrections);
 
-		printf("(%d,%d) decoder says %d errors, true number is %d\n", TOTAL_SYMBOL_COUNT, DATA_SYMBOL_COUNT, derrors, errors);
+		printf("(%d,%d) decoder says %d errors, actual number is %d\n", TOTAL_SYMBOL_COUNT, DATA_SYMBOL_COUNT, derrors, errors);
 
 		printf("tblock = 0x%08X\n", (unsigned int)tblock);
 
+		/* Do the corrections */
 		for(i=0; i<correction_count; i++)
 		{
-			printf("0x%08X = 0x%08X\n", (unsigned int)corrections[i].pointer, (unsigned int)corrections[i].corrected_dword);
 			*corrections[i].pointer = corrections[i].corrected_dword;
 		}
 
+		/* And check them */
 		for (i = 0; i < TOTAL_SYMBOL_COUNT; i++) {
 			if (symbol_get(tblock, i) ^ symbol_get(block, i)) {
 				printf("(%d,%d) error at %d\n", TOTAL_SYMBOL_COUNT, DATA_SYMBOL_COUNT, i);

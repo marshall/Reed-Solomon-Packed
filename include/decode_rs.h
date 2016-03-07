@@ -210,19 +210,19 @@
 			symbol_correction <<= bit_shift;
 			tmp32_ptr = (uint32_t*)&data[woffs];
 
-			if (((uint32_t)tmp32_ptr & 3u) != 0){
-				alignment_needed = 1;
-				tmp32_ptr = (uint32_t*)((uint32_t)tmp32_ptr & ~3u);
-			}
-
-			em_ptr = get_marker(tmp32_ptr, data, correction_count, corrections);
+			alignment_needed = ((uint32_t)tmp32_ptr & 2u);
 
 			if (alignment_needed != 0) {
+				tmp32_ptr = (uint32_t*)((uint32_t)tmp32_ptr & ~2u);
+
+				em_ptr = get_marker(tmp32_ptr, data, correction_count, corrections);
 				em_ptr->corrected_dword ^= (symbol_correction << BITS_PER_WORD);
+
 				em_ptr = get_marker(++tmp32_ptr, data, correction_count, corrections);
 				em_ptr->corrected_dword ^= (symbol_correction >> BITS_PER_WORD);
 			}
 			else {
+				em_ptr = get_marker(tmp32_ptr, data, correction_count, corrections);
 				em_ptr->corrected_dword ^= symbol_correction;
 			}
 		}
